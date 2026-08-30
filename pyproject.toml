@@ -3,7 +3,7 @@ name = "RAG"
 version = "0.1.0"
 description = "RAG"
 readme = "README.md"
-requires-python = ">=3.10, <3.14"
+requires-python = ">=3.10, <=3.12"
 dependencies = [
 	"bm25s>=0.3.10",
 	"fastapi>=0.141.1",
@@ -21,3 +21,12 @@ dev = [
 	"flake8>=7.3.0",
 	"mypy>=2.1.0",
 ]
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tqdm.*", "bm25s.*", "fire.*"]
+ignore_missing_imports = true

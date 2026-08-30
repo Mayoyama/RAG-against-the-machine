@@ -12,12 +12,12 @@ debug:
 	uv run python -m pdb -m src $(ARGS)
 
 lint:
-	uv run python -m flake8 . --exclude=.venv/
-	uv run python -m mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs --exclude=.venv/
+	uv run python -m flake8 . --exclude=.venv/,data/
+	uv run python -m mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs --exclude=.venv/ --exclude=data/
 
 lint-strict:
-	uv run python -m flake8 . --exclude=.venv/
-	uv run python -m mypy . --strict --exclude=.venv/
+	uv run python -m flake8 . --exclude=.venv/,data/
+	uv run python -m mypy . --strict --exclude=.venv/ --exclude=data/
 
 clean:
 	find . -not -path './.venv/*' -type d \( -name "__pycache__" -o -name ".mypy_cache" -o -name ".pytest_cache" \)  -exec rm -rf {} +

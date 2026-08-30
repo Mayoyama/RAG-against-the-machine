@@ -110,6 +110,9 @@ def get_chunk(content: str, char_indices: tuple[int, int]) -> str:
         The text between the given character indices.
     """
 
+    if char_indices[0] < 0 or char_indices[1] < 0:
+        raise ValueError("get_chunk: Invalid value for [char_indices]")
+
     return content[char_indices[0]:char_indices[1]]
 
 
@@ -187,7 +190,8 @@ def parse_md_content(content: str) -> list[tuple[int, int]]:
         if line.strip().startswith('```'):
             in_code_block = not in_code_block
         if not in_code_block and line.strip().startswith('#'):
-            if line.strip().lstrip('#').startswith(' '):
+            if (line.strip().lstrip('#').startswith(' ')
+                    and (line_number - 1 >= section_start)):
                 sections.append((section_start, line_number - 1))
                 section_start = line_number
 
@@ -208,6 +212,9 @@ def chunk_file(pathname: str, chunk_size_limit: int) -> list[Chunk]:
         A list of Chunks covering the file's content, in order. Empty
         if the file has an unsupported extension.
     """
+
+    if chunk_size_limit < 1:
+        raise ValueError("chunk_file: chunk_size_limit must be >= 1")
 
     if pathname.endswith(".py"):
         content = get_utf8_content(pathname)
@@ -231,7 +238,8 @@ def chunk_file(pathname: str, chunk_size_limit: int) -> list[Chunk]:
     for pos in chunk_pos_list:
         chunk = get_chunk(content, pos)
         if len(chunk) > chunk_size_limit:
-            to_chunk.extend(calc_abs_loc(split_str(chunk, chunk_size_limit), pos[0]))
+            to_chunk.extend(
+                calc_abs_loc(split_str(chunk, chunk_size_limit), pos[0]))
         else:
             to_chunk.append((chunk, *pos))
 
