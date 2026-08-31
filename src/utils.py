@@ -81,14 +81,24 @@ def print_srcs(min_srcs: list[MinimalSource]) -> None:
 
 
 def output_progress_bar(task: Callable[[], T], description: str) -> T:
+    """Run a non-iterable task on a background thread, showing an
+    elapsed-time tqdm bar while it runs.
+
+    Args:
+        task: A zero-argument callable to run.
+        description: Label shown next to the elapsed-time bar.
+
+    Returns:
+        Whatever task() returns.
+    """
 
     returns: list[T] = []
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def run_task() -> None:
         try:
             returns.append(task())
-        except BaseException as error:
+        except Exception as error:
             errors.append(error)
 
     thread = threading.Thread(target=run_task)

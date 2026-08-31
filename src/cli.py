@@ -89,6 +89,7 @@ def search(query: str, k: int, save_directory: str = "data/processed",
         print(f"search: no index found at {save_directory}. Run index() first")
         return []
 
+
 def search_dataset(dataset_path: str, k: int, save_directory: str,
                    index_dir: str = "data/processed") -> None:
     """Run search over every question in a dataset and save the results.
@@ -109,13 +110,14 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
         raise ValueError("search_dataset: Invalid value for [save_directory]")
     elif not isinstance(index_dir, str):
         raise ValueError("search_dataset: Invalid value for [index_dir]")
-    
+
     dataset = read_dataset(dataset_path)
 
     try:
         bm25_retriever = Bm25Retriever(index_dir)
     except FileNotFoundError:
-        raise ValueError(f"search_dataset: no index found at {index_dir}. Run index() first")
+        raise ValueError("search_dataset: no index found at "
+                         f"{index_dir}. Run index() first")
 
     search_res: list[MinimalSearchResults] = []
 
@@ -168,9 +170,9 @@ def answer(query: str, k: int,
 
     def run_generator() -> str:
         return generator.generate_answer(query, min_srcs)
-    
+
     answer_str = output_progress_bar(run_generator, "Generating answer")
-    
+
     res = f"QUERY: {query}\nANSWER: {answer_str}"
 
     print(res)
@@ -194,8 +196,7 @@ def answer_dataset(student_search_results_path: str,
     elif not isinstance(save_directory, str):  # Write dir
         raise ValueError("answer_dataset: Invalid value for [save_directory]")
 
-    with tqdm(desc="Importing Generator+Transformers", total=None):
-        from .generation import Generator
+    from .generation import Generator
 
     generator = Generator()
     res_n_ans: list[MinimalAnswer] = []

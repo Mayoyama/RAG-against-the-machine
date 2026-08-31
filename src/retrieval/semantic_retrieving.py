@@ -1,8 +1,8 @@
 from .retrieval_base import RetrievalBase
 from sentence_transformers import SentenceTransformer
 from src import MinimalSource, EMBEDDING_MODEL
+from ..utils import output_progress_bar
 from pathlib import Path
-from tqdm import tqdm
 import numpy as np
 import bm25s
 
@@ -21,8 +21,10 @@ class SemanticRetriever(RetrievalBase):
         pathname = Path(save_dir) / "semantic_index.npy"
         self.matrix = np.load(pathname)
 
-        with tqdm(desc="Loading embedding model", total=None):
-            model = SentenceTransformer(EMBEDDING_MODEL)
+        def sem_idx() -> SentenceTransformer:
+            return SentenceTransformer(EMBEDDING_MODEL)
+
+        self.model = output_progress_bar(sem_idx, "Building semantic index")
 
         self.retriever = bm25s.BM25.load(save_dir, load_corpus=True)
 

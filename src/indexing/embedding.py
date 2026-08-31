@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from src import Chunk
-from tqdm import tqdm
+from ..utils import output_progress_bar
 
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
@@ -19,9 +19,11 @@ def build_semantic_index(chunks: list[Chunk]) -> np.ndarray:
     Returns:
         An array of shape (len(chunks), embedding_dim).
     """
-    with tqdm(desc="Loading embedding model", total=None):
-        model = SentenceTransformer(EMBEDDING_MODEL)
-        
+
+    def sem_idx() -> SentenceTransformer:
+        return SentenceTransformer(EMBEDDING_MODEL)
+
+    model = output_progress_bar(sem_idx, "Building semantic index")
     matrix = model.encode([chunk.content for chunk in chunks])
 
     return matrix
