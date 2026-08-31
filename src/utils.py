@@ -3,6 +3,13 @@ from sys import stderr, exit
 from typing import Any
 from .models import RagDataset, StudentSearchResults, MinimalSource
 from pydantic import ValidationError
+from typing import Callable, TypeVar
+from tqdm import tqdm
+import time
+import threading
+
+
+T = TypeVar("T")
 
 
 def create_json(pathname: str, content: dict[str, Any]) -> None:
@@ -71,3 +78,30 @@ def print_srcs(min_srcs: list[MinimalSource]) -> None:
     for src in min_srcs:
         print(f"{src.file_path} [{src.first_character_index}:"
               f"{src.last_character_index}]")
+
+
+def output_progress_bar(task: Callable[[], T], description: str) -> T:
+
+    returns: list[T] = []
+    errors: list[BaseException] = []
+
+    def run_task() -> None:
+        try:
+            returns.append(task())
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=run_task)
+    thread.start()
+
+    with tqdm(desc=description, bar_format="{desc}: {elapsed}") as progbar:
+        while thread.is_alive():
+            progbar.update(1)
+            time.sleep(0.2)
+
+    thread.join()
+
+    if errors:
+        raise errors[0]
+
+    return returns[0]

@@ -2,6 +2,7 @@ from .retrieval_base import RetrievalBase
 from sentence_transformers import SentenceTransformer
 from src import MinimalSource, EMBEDDING_MODEL
 from pathlib import Path
+from tqdm import tqdm
 import numpy as np
 import bm25s
 
@@ -20,7 +21,8 @@ class SemanticRetriever(RetrievalBase):
         pathname = Path(save_dir) / "semantic_index.npy"
         self.matrix = np.load(pathname)
 
-        self.model = SentenceTransformer(EMBEDDING_MODEL)
+        with tqdm(desc="Loading embedding model", total=None):
+            model = SentenceTransformer(EMBEDDING_MODEL)
 
         self.retriever = bm25s.BM25.load(save_dir, load_corpus=True)
 

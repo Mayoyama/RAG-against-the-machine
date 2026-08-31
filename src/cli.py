@@ -3,7 +3,8 @@ from .retrieval import Bm25Retriever, SemanticRetriever, HybridRetriever
 from .models import (MinimalSource, MinimalSearchResults, MinimalAnswer,
                      StudentSearchResults, StudentSearchResultsAndAnswer)
 from .evaluation import evaluate_recallk
-from .utils import create_json, read_dataset, read_search_results, print_srcs
+from .utils import (create_json, read_dataset, read_search_results,
+                    print_srcs, output_progress_bar)
 from .caching import get_cached, set_cached
 from pathlib import Path
 from tqdm import tqdm
@@ -22,9 +23,12 @@ def index(max_chunk_size: int = 2000, root_directory: str = "data/raw",
     if not isinstance(max_chunk_size, int) or max_chunk_size < 1:
         raise ValueError("index: Invalid value for [max_chunk_size]")
     elif not Path(root_directory).is_dir():  # Read dir
-        raise ValueError("index: Invalid value for [root_directory]")
+        raise ValueError("index: Invalid value for [root_directory]"
+                         " or directory does not exist")
     elif not isinstance(save_directory, str):  # Write dir
         raise ValueError("index: Invalid value for [save_directory]")
+
+    Path(save_directory).mkdir(parents=True, exist_ok=True)
 
     index_corpus(root_directory, max_chunk_size, save_directory)
 
@@ -50,36 +54,40 @@ def search(query: str, k: int, save_directory: str = "data/processed",
         raise ValueError("search: Invalid value for [query]")
     elif not isinstance(k, int) or k < 0:
         raise ValueError("search: Invalid value for [k]")
-    elif not Path(save_directory).is_dir():  # Read dir
+    elif not isinstance(save_directory, str):
         raise ValueError("search: Invalid value for [save_directory]")
     elif method not in ("bm25", "semantic", "hybrid"):
         raise ValueError("search: Invalid value for [method]")
 
-    if method == "bm25":
-        cache_path = str(Path(save_directory) / "query_cache.json")
-        cache = get_cached(cache_path, query, k)
+    try:
+        if method == "bm25":
+            cache_path = str(Path(save_directory) / "query_cache.json")
+            cache = get_cached(cache_path, query, k)
 
-        if cache is not None:
-            print_srcs(cache)
-            return cache
+            if cache is not None:
+                print_srcs(cache)
+                return cache
 
-        bm25_retriever = Bm25Retriever(save_directory)
-        min_srcs = bm25_retriever.search(query, k)
+            bm25_retriever = Bm25Retriever(save_directory)
+            min_srcs = bm25_retriever.search(query, k)
 
-        set_cached(cache_path, query, k, min_srcs)
+            set_cached(cache_path, query, k, min_srcs)
 
-    elif method == "semantic":
-        semantic_retriever = SemanticRetriever(save_directory)
-        min_srcs = semantic_retriever.search(query, k)
+        elif method == "semantic":
+            semantic_retriever = SemanticRetriever(save_directory)
+            min_srcs = semantic_retriever.search(query, k)
 
-    else:
-        hybrid_retriever = HybridRetriever(save_directory)
-        min_srcs = hybrid_retriever.search(query, k)
+        else:
+            hybrid_retriever = HybridRetriever(save_directory)
+            min_srcs = hybrid_retriever.search(query, k)
 
-    print_srcs(min_srcs)
+        print_srcs(min_srcs)
 
-    return min_srcs
+        return min_srcs
 
+    except FileNotFoundError:
+        print(f"search: no index found at {save_directory}. Run index() first")
+        return []
 
 def search_dataset(dataset_path: str, k: int, save_directory: str,
                    index_dir: str = "data/processed") -> None:
@@ -93,16 +101,21 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
     """
 
     if not Path(dataset_path).is_file():  # Read file
-        raise ValueError("search_dataset: Invalid value for [dataset_path]")
+        raise ValueError("search_dataset: Invalid value for [dataset_path]"
+                         " or file does not exist")
     elif not isinstance(k, int) or k < 0:
         raise ValueError("search_dataset: Invalid value for [k]")
     elif not isinstance(save_directory, str):  # Write dir
         raise ValueError("search_dataset: Invalid value for [save_directory]")
-    elif not Path(index_dir).is_dir():  # Read dir
+    elif not isinstance(index_dir, str):
         raise ValueError("search_dataset: Invalid value for [index_dir]")
-
+    
     dataset = read_dataset(dataset_path)
-    bm25_retriever = Bm25Retriever(index_dir)
+
+    try:
+        bm25_retriever = Bm25Retriever(index_dir)
+    except FileNotFoundError:
+        raise ValueError(f"search_dataset: no index found at {index_dir}. Run index() first")
 
     search_res: list[MinimalSearchResults] = []
 
@@ -139,16 +152,25 @@ def answer(query: str, k: int,
         raise ValueError("answer: Invalid value for [query]")
     elif not isinstance(k, int) or k < 0:
         raise ValueError("answer: Invalid value for [k]")
-    elif not Path(save_directory).is_dir():  # Read dir
+    elif not isinstance(save_directory, str):
         raise ValueError("answer: Invalid value for [save_directory]")
 
-    from .generation import Generator
+    try:
+        from .generation import Generator
 
-    bm25_retriever = Bm25Retriever(save_directory)
-    min_srcs = bm25_retriever.search(query, k)
+        bm25_retriever = Bm25Retriever(save_directory)
+        min_srcs = bm25_retriever.search(query, k)
+    except FileNotFoundError:
+        print(f"answer: no index found at {save_directory}. Run index() first")
+        return ""
 
     generator = Generator()
-    answer_str = generator.generate_answer(query, min_srcs)
+
+    def run_generator() -> str:
+        return generator.generate_answer(query, min_srcs)
+    
+    answer_str = output_progress_bar(run_generator, "Generating answer")
+    
     res = f"QUERY: {query}\nANSWER: {answer_str}"
 
     print(res)
@@ -167,11 +189,13 @@ def answer_dataset(student_search_results_path: str,
 
     if not Path(student_search_results_path).is_file():  # Read file
         raise ValueError("answer_dataset: Invalid value for "
-                         "[student_search_results_path]")
+                         "[student_search_results_path]"
+                         " or file does not exist")
     elif not isinstance(save_directory, str):  # Write dir
         raise ValueError("answer_dataset: Invalid value for [save_directory]")
 
-    from .generation import Generator
+    with tqdm(desc="Importing Generator+Transformers", total=None):
+        from .generation import Generator
 
     generator = Generator()
     res_n_ans: list[MinimalAnswer] = []
@@ -211,9 +235,11 @@ def evaluate(student_search_results_path: str, dataset_path: str) -> None:
 
     if not Path(student_search_results_path).is_file():  # Read file
         raise ValueError("evaluate: Invalid value for "
-                         "[student_search_results_path]")
+                         "[student_search_results_path]"
+                         " or file does not exist")
     elif not Path(dataset_path).is_file():  # Read file
-        raise ValueError("evaluate: Invalid value for [dataset_path]")
+        raise ValueError("evaluate: Invalid value for [dataset_path]"
+                         " or file does not exist")
 
     search_res = read_search_results(student_search_results_path)
     dataset = read_dataset(dataset_path)
