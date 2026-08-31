@@ -1,5 +1,7 @@
-from .index_store import index_corpus
+from .indexing import index_corpus
+from .embedding import EMBEDDING_MODEL
 
 __all__ = [
-    "index_corpus"
+    "index_corpus",
+    "EMBEDDING_MODEL"
 ]

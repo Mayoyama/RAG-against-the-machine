@@ -39,7 +39,10 @@ def parse_py_content(content: str) -> list[tuple[int, int]]:
         func_class_list: list[tuple[int, int]] = []
 
         for item in parsed.body:
-            if isinstance(item, ast.FunctionDef | ast.ClassDef):
+            if isinstance(
+                    item, ast.FunctionDef
+                    | ast.ClassDef
+                    | ast.AsyncFunctionDef):
                 if item.end_lineno:
                     func_class_list.append((item.lineno, item.end_lineno))
 

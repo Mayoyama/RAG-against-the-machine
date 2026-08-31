@@ -1,5 +1,6 @@
 from pathlib import Path
 from .chunking import chunk_file
+from .embedding import save_semantic_index, build_semantic_index
 from src import Chunk
 from tqdm import tqdm
 import bm25s
@@ -82,7 +83,8 @@ def save_index(retriever: bm25s.BM25, chunks: list[Chunk],
 
 
 def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str) -> None:
-    """Chunk a directory's files and persist a BM25 index for them.
+    """Chunk a directory's files and persist a BM25 index and a
+    semantic (embedding) index for them.
 
     Args:
         root_dir: Root directory to index.
@@ -92,5 +94,7 @@ def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str) -> None:
 
     paths = build_pathlist(root_dir)
     chunks = build_chunks(paths, chunk_size_limit)
+    matrix = build_semantic_index(chunks)
+    save_semantic_index(matrix, save_dir)
     retriever = build_bm25_index(chunks)
     save_index(retriever, chunks, save_dir)

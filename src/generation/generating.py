@@ -100,12 +100,12 @@ class Generator:
         messages = self._build_messages(question, sources)
 
         tokens = self.tokenizer.apply_chat_template(
-            messages, return_tensors="pt")
+            messages, return_tensors="pt", return_dict=True)
 
         output = self.model.generate(
-            tokens, max_new_tokens=self.max_new_tokens)
+            tokens["input_ids"], max_new_tokens=self.max_new_tokens)
 
-        minus_prompt = output[0][tokens.shape[-1]:]
+        minus_prompt = output[0][tokens["input_ids"].shape[-1]:]
         res = self.tokenizer.decode(minus_prompt, skip_special_tokens=True)
 
         return str(res)

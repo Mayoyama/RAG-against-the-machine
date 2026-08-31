@@ -1,7 +1,7 @@
 from json import dump
 from sys import stderr, exit
 from typing import Any
-from .models import RagDataset, StudentSearchResults
+from .models import RagDataset, StudentSearchResults, MinimalSource
 from pydantic import ValidationError
 
 
@@ -59,3 +59,15 @@ def read_search_results(pathname: str) -> StudentSearchResults:
         print(f"read_search_results: Error reading data: {e}.",
               file=stderr)
         exit(1)
+
+
+def print_srcs(min_srcs: list[MinimalSource]) -> None:
+    """Print each source's file path and character range, one per line.
+
+    Args:
+        min_srcs: Sources to print.
+    """
+
+    for src in min_srcs:
+        print(f"{src.file_path} [{src.first_character_index}:"
+              f"{src.last_character_index}]")

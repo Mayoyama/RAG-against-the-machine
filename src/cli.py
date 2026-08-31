@@ -1,10 +1,10 @@
 from .indexing import index_corpus
-from .retrieval import Bm25Retriever
+from .retrieval import Bm25Retriever, SemanticRetriever, HybridRetriever
 from .models import (MinimalSource, MinimalSearchResults, MinimalAnswer,
                      StudentSearchResults, StudentSearchResultsAndAnswer)
 from .evaluation import evaluate_recallk
-from .generation import Generator
-from .utils import create_json, read_dataset, read_search_results
+from .utils import create_json, read_dataset, read_search_results, print_srcs
+from .caching import get_cached, set_cached
 from pathlib import Path
 from tqdm import tqdm
 
@@ -28,15 +28,19 @@ def index(max_chunk_size: int = 2000, root_directory: str = "data/raw",
 
     index_corpus(root_directory, max_chunk_size, save_directory)
 
+    cache_path = Path(save_directory) / "query_cache.json"
+    cache_path.unlink(missing_ok=True)
 
-def search(query: str, k: int,
-           save_directory: str = "data/processed") -> list[MinimalSource]:
+
+def search(query: str, k: int, save_directory: str = "data/processed",
+           method: str = "bm25") -> list[MinimalSource]:
     """Search the index for a single query and print the results.
 
     Args:
         query: The search query.
         k: Number of top results to return.
         save_directory: Directory the index was saved under.
+        method: Retrieval method to use, "bm25", "semantic", or "hybrid".
 
     Returns:
         The top-k matching sources.
@@ -48,13 +52,31 @@ def search(query: str, k: int,
         raise ValueError("search: Invalid value for [k]")
     elif not Path(save_directory).is_dir():  # Read dir
         raise ValueError("search: Invalid value for [save_directory]")
+    elif method not in ("bm25", "semantic", "hybrid"):
+        raise ValueError("search: Invalid value for [method]")
 
-    bm25_retriever = Bm25Retriever(save_directory)
-    min_srcs = bm25_retriever.search(query, k)
+    if method == "bm25":
+        cache_path = str(Path(save_directory) / "query_cache.json")
+        cache = get_cached(cache_path, query, k)
 
-    for src in min_srcs:
-        print(f"{src.file_path} [{src.first_character_index}:"
-              f"{src.last_character_index}]")
+        if cache is not None:
+            print_srcs(cache)
+            return cache
+
+        bm25_retriever = Bm25Retriever(save_directory)
+        min_srcs = bm25_retriever.search(query, k)
+
+        set_cached(cache_path, query, k, min_srcs)
+
+    elif method == "semantic":
+        semantic_retriever = SemanticRetriever(save_directory)
+        min_srcs = semantic_retriever.search(query, k)
+
+    else:
+        hybrid_retriever = HybridRetriever(save_directory)
+        min_srcs = hybrid_retriever.search(query, k)
+
+    print_srcs(min_srcs)
 
     return min_srcs
 
@@ -102,13 +124,16 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
 
 
 def answer(query: str, k: int,
-           save_directory: str = "data/processed") -> None:
+           save_directory: str = "data/processed") -> str:
     """Answer a single query using the retrieved context.
 
     Args:
         query: The question to answer.
         k: Number of sources to retrieve as context.
         save_directory: Directory the index was saved under.
+
+    Returns:
+        The model's generated answer text.
     """
     if not isinstance(query, str):
         raise ValueError("answer: Invalid value for [query]")
@@ -117,13 +142,17 @@ def answer(query: str, k: int,
     elif not Path(save_directory).is_dir():  # Read dir
         raise ValueError("answer: Invalid value for [save_directory]")
 
+    from .generation import Generator
+
     bm25_retriever = Bm25Retriever(save_directory)
     min_srcs = bm25_retriever.search(query, k)
 
     generator = Generator()
     answer_str = generator.generate_answer(query, min_srcs)
+    res = f"QUERY: {query}\nANSWER: {answer_str}"
 
-    print(f"QUERY: {query}\nANSWER: {answer_str}")
+    print(res)
+    return answer_str
 
 
 def answer_dataset(student_search_results_path: str,
@@ -141,6 +170,8 @@ def answer_dataset(student_search_results_path: str,
                          "[student_search_results_path]")
     elif not isinstance(save_directory, str):  # Write dir
         raise ValueError("answer_dataset: Invalid value for [save_directory]")
+
+    from .generation import Generator
 
     generator = Generator()
     res_n_ans: list[MinimalAnswer] = []
