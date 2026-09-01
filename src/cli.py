@@ -1,5 +1,6 @@
 from .indexing import index_corpus
-from .retrieval import Bm25Retriever, SemanticRetriever, HybridRetriever
+from .retrieval import (Bm25Retriever, SemanticRetriever, 
+                        HybridRetriever, RetrievalBase)
 from .models import (MinimalSource, MinimalSearchResults, MinimalAnswer,
                      StudentSearchResults, StudentSearchResultsAndAnswer)
 from .evaluation import evaluate_recallk
@@ -91,7 +92,8 @@ def search(query: str, k: int, save_directory: str = "data/processed",
 
 
 def search_dataset(dataset_path: str, k: int, save_directory: str,
-                   index_dir: str = "data/processed") -> None:
+                   index_dir: str = "data/processed",
+                   method: str = "bm25") -> None:
     """Run search over every question in a dataset and save the results.
 
     Args:
@@ -99,6 +101,7 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
         k: Number of top results to return per question.
         save_directory: Directory to write the output JSON file under.
         index_dir: Directory the index was saved under.
+        method: Retrieval method to use, "bm25", "semantic", or "hybrid".
     """
 
     if not Path(dataset_path).is_file():  # Read file
@@ -114,7 +117,12 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
     dataset = read_dataset(dataset_path)
 
     try:
-        bm25_retriever = Bm25Retriever(index_dir)
+        if method == "bm25":
+            retriever: RetrievalBase = Bm25Retriever(index_dir)
+        elif method == "semantic":
+            retriever = SemanticRetriever(index_dir)
+        else:
+            retriever = HybridRetriever(index_dir)
     except FileNotFoundError:
         raise ValueError("search_dataset: no index found at "
                          f"{index_dir}. Run index() first")
@@ -122,7 +130,7 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
     search_res: list[MinimalSearchResults] = []
 
     for data in tqdm(dataset.rag_questions):
-        min_srcs = bm25_retriever.search(data.question, k)
+        min_srcs = retriever.search(data.question, k)
         search_res.append(MinimalSearchResults(
             question_id=data.question_id,
             question=data.question,
@@ -226,7 +234,7 @@ def answer_dataset(student_search_results_path: str,
 
 
 def evaluate(student_search_results_path: str, dataset_path: str) -> None:
-    """Report recall@k against a ground-truth dataset.
+    """Report recall@k against a dataset.
 
     Args:
         student_search_results_path: Path to the StudentSearchResults

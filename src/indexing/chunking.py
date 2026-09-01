@@ -52,6 +52,32 @@ def parse_py_content(content: str) -> list[tuple[int, int]]:
         return []
 
 
+def find_gaps_in_py(chunk_pos_list: list[tuple[int, int]],
+                    content_length: int) -> list[tuple[int, int]]:
+    """Find the character ranges NOT covered by any given span.
+
+    Args:
+        chunk_pos_list: (start, end) character ranges, in file order.
+        content_length: Total length of the file's content.
+
+    Returns:
+        (start, end) pairs covering what spans misses.
+    """
+
+    gaps: list[tuple[int, int]] = []
+    curr_pos = 0
+
+    for start, end in chunk_pos_list:
+        if start > curr_pos:
+            gaps.append((curr_pos, start))
+        curr_pos = end
+
+    if content_length > curr_pos:
+        gaps.append((curr_pos, content_length))
+
+    return gaps
+
+
 def get_line_char_counts(content: str) -> list[int]:
     """Compute the character offset where each line of content starts.
 
@@ -120,7 +146,12 @@ def get_chunk(content: str, char_indices: tuple[int, int]) -> str:
 
 
 def split_str(content: str, chunk_size: int) -> list[tuple[str, int, int]]:
-    """Split oversized content into pieces no larger than chunk_size.
+    """Split oversized content into overlapping pieces no larger than
+    chunk_size.
+
+    Consecutive pieces share roughly 15% of chunk_size in overlapping
+    content, so information near a piece boundary isn't lost to either
+    side. Falls back to non-overlapping pieces if chunk_size < 10.
 
     Args:
         content: The text to split.
@@ -136,15 +167,15 @@ def split_str(content: str, chunk_size: int) -> list[tuple[str, int, int]]:
         return []
 
     new_chunks: list[tuple[str, int, int]] = []
-    char_count = 0
+    start = 0
+    overlap_window = int(chunk_size * 0.15) if chunk_size >= 10 else 0
 
-    while content:
-        new_chunk = content[:chunk_size]
-        start = char_count
-        char_count += len(new_chunk)
-        end = char_count
-        content = content[chunk_size:]
+    while start < len(content):
+
+        new_chunk = content[start:start + chunk_size]
+        end = len(new_chunk) + start
         new_chunks.append((new_chunk, start, end))
+        start += chunk_size - overlap_window
 
     return new_chunks
 
@@ -235,6 +266,11 @@ def chunk_file(pathname: str, chunk_size_limit: int) -> list[Chunk]:
     line_pos_list = get_line_char_counts(content)
 
     chunk_pos_list = get_start_end_char_nums(parsed, line_pos_list)
+
+    if pathname.endswith(".py"):
+        leftover_gaps = find_gaps_in_py(chunk_pos_list, len(content))
+        chunk_pos_list.extend(leftover_gaps)
+        chunk_pos_list = sorted(chunk_pos_list)
 
     to_chunk: list[tuple[str, int, int]] = []
 
