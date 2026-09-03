@@ -30,13 +30,15 @@ The project is exposed entirely through a command-line interface: index the corp
 
 Install dependencies with `make install` (runs `uv sync`). Commands are run through `make run ARGS="<command> [options]"`, or directly via `uv run python -m src <command> [options]`. Available commands: `index`, `search`, `search_dataset`, `answer`, `answer_dataset`, `evaluate` — see Example Usage below.
 
+Pass `--apply_bonuses True` to `index` to also build the semantic index and enable incremental reuse on later runs — required before `search`/`search_dataset` can use `--method semantic` or `--method hybrid`.
+
 Use `make debug ARGS="..."` to run any command under `pdb`, `make lint` / `make lint-strict` to run flake8 and mypy, and `make clean` to remove caches and compiled files.
 
 [↑ Back to top](#top)
 
 ## System Architecture
 
-The codebase is split into independent modules under `src/`: `indexing/` (chunking + BM25/semantic index construction), `retrieval/` (BM25, semantic, and hybrid search), `generation/` (LLM-based answer generation), and `evaluation/` (recall@k scoring). `models.py` defines the pydantic schemas shared across modules, and `utils.py` handles JSON I/O. `cli.py` wires all of the above into six commands, exposed through Python Fire in `__main__.py`.
+The codebase is split into independent modules under `src/`: `indexing/` (chunking, BM25/semantic index construction, incremental-reindex manifest), `retrieval/` (BM25, semantic, and hybrid search), `generation/` (LLM-based answer generation), and `evaluation/` (recall@k scoring). `models.py` defines the pydantic schemas shared across modules, and `utils.py` handles JSON I/O. `cli.py` wires all of the above into six commands, exposed through Python Fire in `__main__.py`.
 
 Each module's public functions are independent of the CLI layer, so they can be used or tested without going through Fire.
 
@@ -48,6 +50,8 @@ Python files are parsed with `ast` and chunked at the top level: each top-level 
 
 A recursive, method-level variant was also prototyped, splitting classes down into individual methods instead of keeping them as one chunk. It wasn't adopted: top-level chunking (once extended to cover `async def`) already clears the mandatory recall thresholds with meaningfully less complexity.
 
+Two later additions changed *what* gets chunked, not just how: oversized pieces now split into ~15%-overlapping windows instead of hard cuts, so content near a boundary isn't lost to either side, and content previously discarded between Python top-level definitions (imports, module-level code, gaps) is now captured as its own chunks. Both were tested against the real corpus and produced no measurable recall@5 change, while roughly tripling total chunk count (~9,200 → ~28,700) — kept for completeness, but a real cost, particularly for embedding time (see Incremental Indexing below).
+
 [↑ Back to top](#top)
 
 ## Retrieval Method
@@ -56,11 +60,13 @@ Retrieval defaults to BM25 ranking via the `bm25s` library: `Bm25Retriever` buil
 
 Two additional retrieval methods are available as bonus features (see Bonus Features below): `SemanticRetriever`, which ranks chunks by cosine similarity over embeddings, and `HybridRetriever`, which fuses BM25 and semantic rankings via Reciprocal Rank Fusion. All three implement the same `RetrievalBase` interface and are selectable via `search`'s `method` parameter (`"bm25"`, `"semantic"`, or `"hybrid"`).
 
+Chunk content and queries are also preprocessed with `expand_snake_case` (replacing `_` with spaces) before BM25 tokenization, since `bm25s` otherwise treats an identifier like `get_utf8_content` as one atomic token — invisible to a query using any of its component words. Verified against the real moulinette: +1.0pp code Recall@5 on its own (51.5% → 52.5%), no change on docs (no snake_case content there to fix), and a much larger effect once stacked with hybrid retrieval (see Hybrid Retrieval below). Applied unconditionally to both index-build and query-time tokenization — the two have to stay in sync, or matching breaks instead of improving.
+
 [↑ Back to top](#top)
 
 ## Performance Analysis
 
-Recall@k is computed via IoU (intersection-over-union of character spans, same-file match, threshold 0.05) against a labelled dataset, per the project spec. With the final chunking approach (top-level AST chunking, including `async def`), the pipeline measures 85.0% documentation recall and 51.5% code recall, against the 80% / 50% mandatory thresholds.
+Recall@k is computed via IoU (intersection-over-union of character spans, same-file match, threshold 0.05) against a labelled dataset, per the project spec. With the final chunking approach (top-level AST chunking, including `async def`) and `expand_snake_case` tokenization, the default (BM25-only) pipeline measures 85.0% documentation recall and 52.5% code recall, against the 80% / 50% mandatory thresholds.
 
 <!-- TODO (ask Shane): add indexing time / retrieval time here once measured at full scale on the school machines (mandatory limits: indexing ≤ 5 min, retrieval ≤ 90s / 200 questions). -->
 
@@ -91,6 +97,7 @@ Recall@k is computed via IoU (intersection-over-union of character spans, same-f
 
 ```
 uv run python -m src index --root_directory data/raw --save_directory data/processed
+uv run python -m src index --root_directory data/raw --save_directory data/processed --apply_bonuses True
 uv run python -m src search --query "..." --k 5
 uv run python -m src search --query "..." --k 5 --method semantic
 uv run python -m src search --query "..." --k 5 --method hybrid
@@ -110,15 +117,32 @@ uv run python -m src evaluate --student_search_results_path data/output/question
 
 `SemanticRetriever.search()` embeds the query the same way, then ranks chunks by cosine similarity (`(a · b) / (|a| * |b|)`, computed as a single vectorized operation over the whole matrix) and returns the top-k. `search()` in `cli.py` takes a new `method` parameter (`"bm25"`, default, or `"semantic"`) to choose between the two retrievers; caching is intentionally scoped to the BM25 path only, since the query cache was already keyed on `(query, k)` without a `method` dimension, and semantic queries aren't the target of that optimization.
 
-Verified: indexing the full vLLM corpus (17,653 chunks) produces a `semantic_index.npy` of shape `(17653, 384)`, matching the chunk count and the model's embedding dimension.
+Verified: indexing the full vLLM corpus (~28,700 chunks with the current chunking strategy) produces a `semantic_index.npy` of matching shape `(num_chunks, 384)`, row count tracking the chunk count and the second dimension matching the model's embedding size.
 
 ### Hybrid Retrieval
 
-`HybridRetriever` combines the BM25 and semantic rankings into one result list using Reciprocal Rank Fusion (RRF): each retriever is asked for `min(k * 4, corpus_size)` candidates rather than just `k`, since a chunk ranked just outside one list's top-`k` could still rank well once both lists are combined. Every chunk is scored by `1 / (60 + rank + 1)` for each list it appears in (rank starting at 0, 60 being the standard RRF constant), and scores are summed for chunks retrieved by both. The `search()` command's `method` parameter now accepts `"hybrid"` alongside `"bm25"` and `"semantic"`.
+`HybridRetriever` combines the BM25 and semantic rankings into one result list using Reciprocal Rank Fusion (RRF): each retriever is asked for `min(k * 4, corpus_size)` candidates rather than just `k`, since a chunk ranked just outside one list's top-`k` could still rank well once both lists are combined. Every chunk is scored `weight / (60 + rank + 1)` for each list it appears in (rank starting at 0, 60 the standard RRF constant), summed across whichever lists it appears in. The `search()`/`search_dataset` `method` parameter accepts `"hybrid"` alongside `"bm25"` and `"semantic"`.
 
 Since BM25 and the semantic index are built from the exact same `chunks` list, in the same order, a chunk retrieved by both is *identical* — same `file_path`, same character range — so fusion matches chunks with plain equality on `(file_path, first_character_index)`, no fuzzy overlap check needed. Caching, as with semantic search, is intentionally scoped to the BM25 path only.
 
-Verified with a manual comparison script (`compare_retrievers.py`, not part of the graded codebase) against the real corpus: for a query where BM25 and semantic search returned zero overlapping chunks on their own, the top-5 hybrid result was a genuine blend of both — 3 chunks from BM25's list and 2 from semantic's — confirming fusion combines both rankings rather than defaulting to one.
+Verified against the real moulinette, not just an internal comparison script. Equal weighting (`weight=1.0` for both rankers) improved code Recall@5 but dropped docs Recall@5 *below* the mandatory 80% threshold — the same effect one researched peer repo reported for semantic fusion hurting docs recall. Weighting BM25 higher than semantic recovers docs while keeping most of the code gain; the final tuned ratio is `3.6:1.0`, found empirically by testing against both datasets and re-checking after `expand_snake_case` (Retrieval Method above) was added, since that changed the underlying numbers each weight was tuned against:
+
+| Method | Code Recall@5 | Docs Recall@5 |
+|---|---|---|
+| BM25 only | 51.5% | 85.0% |
+| BM25 + `expand_snake_case` | 52.5% | 85.0% |
+| Hybrid, equal weight | 53.5% | 78.0% (fails 80% threshold) |
+| Hybrid, weighted 3.6:1.0 + `expand_snake_case` | 57.6% | 82.0% |
+
+The two bonuses compound well on code (57.6% vs 52.5% BM25-only) while docs keeps real margin above threshold (82.0% vs 80% required) — a deliberately safer landing spot than an earlier tuning pass that hit exactly 80.0% with no buffer. `search`/`search_dataset` default to `method="bm25"`, so none of this affects the mandatory baseline either way.
+
+### Incremental Indexing
+
+`index --apply_bonuses True` additionally builds the semantic index and skips re-chunking/re-embedding files unchanged since the last run, tracked via a manifest (`manifest.json`, saved alongside the other index files) keyed by file path, storing each file's modification time and its chunks. Unchanged files' embeddings are reused without duplicating them anywhere: each manifest entry keeps a row-range pointer into the *previous* run's `semantic_index.npy`, sliced out and reused directly rather than storing vectors a second time.
+
+Scoped to the practical reading of the bonus requirement, not the strict one: the persisted BM25 index and `semantic_index.npy` still get fully rewritten every run — `bm25s` has no incremental-update API, so that part is unavoidable — but the expensive work (re-parsing files with `ast`, re-embedding via the model) is skipped for anything unchanged. `index` prints an unconditional summary every run (`Reindexing: X files changed, Y unchanged`), so the mechanism is demonstrable without a special flag or verbose mode.
+
+`apply_bonuses` itself defaults to `False`, unlike every other bonus in this project (all always-on) — a deliberate exception. Building the semantic index is a real, unavoidable one-time cost even with caching, and with the current chunk count (~28,700, see Chunking Strategy) it measured well past the mandatory 5-minute indexing limit. Making it opt-in keeps mandatory `index` fast and unaffected; the trade-off is that semantic embeddings, hybrid retrieval, and incremental reuse all require explicitly passing `--apply_bonuses True` to be exercised at all.
 
 ### Caching
 

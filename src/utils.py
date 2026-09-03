@@ -115,3 +115,17 @@ def output_progress_bar(task: Callable[[], T], description: str) -> T:
         raise errors[0]
 
     return returns[0]
+
+
+def expand_snake_case(text: str) -> str:
+    """Replace underscores with spaces so BM25 tokenizes snake_case
+    identifiers (e.g. get_utf8_content) into separate searchable words.
+
+    Args:
+        text: Raw text to preprocess before BM25 tokenization.
+
+    Returns:
+        The same text with underscores replaced by spaces.
+    """
+
+    return text.replace('_', ' ')

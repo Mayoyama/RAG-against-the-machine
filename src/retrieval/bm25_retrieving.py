@@ -1,5 +1,5 @@
 from .retrieval_base import RetrievalBase
-from src import MinimalSource
+from src import MinimalSource, expand_snake_case
 import bm25s
 
 
@@ -14,7 +14,7 @@ class Bm25Retriever(RetrievalBase):
 
         min_srcs: list[MinimalSource] = []
 
-        query_tokens = bm25s.tokenize(query)
+        query_tokens = bm25s.tokenize(expand_snake_case(query))
         results, _ = self.retriever.retrieve(query_tokens, k=k)
 
         for res in results[0]:

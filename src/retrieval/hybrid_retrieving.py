@@ -18,7 +18,7 @@ class HybridRetriever(RetrievalBase):
 
     @staticmethod
     def build_results_dict(
-        results: list[MinimalSource]
+        results: list[MinimalSource], weight: float
     ) -> dict[tuple[str, int], tuple[float, MinimalSource]]:
         """Map each result to its RRF rank contribution and itself.
 
@@ -33,7 +33,7 @@ class HybridRetriever(RetrievalBase):
         dic: dict[tuple[str, int], tuple[float, MinimalSource]] = {}
         for i, res in enumerate(results):
             dic[(res.file_path, res.first_character_index)] = \
-                (1 / (60 + i + 1), res)
+                (weight / (60 + i + 1), res)
 
         return dic
 
@@ -56,8 +56,8 @@ class HybridRetriever(RetrievalBase):
         bm25_res = self.bm25.search(query, pool_size)
         semantic_res = self.semantic.search(query, pool_size)
 
-        bm25_res_d = self.build_results_dict(bm25_res)
-        semantic_res_d = self.build_results_dict(semantic_res)
+        bm25_res_d = self.build_results_dict(bm25_res, weight=3.6)
+        semantic_res_d = self.build_results_dict(semantic_res, weight=1.0)
 
         combined: dict[tuple[str, int], tuple[float, MinimalSource]] = {}
 

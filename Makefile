@@ -1,6 +1,6 @@
 ARGS =
 
-.PHONY: run api install debug lint lint-strict clean uninstall
+.PHONY: run api install index index-bonus debug lint lint-strict clean uninstall
 
 run:
 	uv run python -m src $(ARGS)
@@ -31,7 +31,10 @@ setup-data:
 
 index: 
 	uv run python -m src index --root_directory data/raw --save_directory data/processed
-	
+
+index-bonus: 
+	uv run python -m src index --root_directory data/raw --save_directory data/processed --apply_bonuses True
+
 debug:
 	uv run python -m pdb -m src $(ARGS)
 

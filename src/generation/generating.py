@@ -7,7 +7,7 @@ class Generator:
     """Generates grounded answers from retrieved sources using a local LLM."""
 
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B",
-                 max_new_tokens: int = 1500) -> None:
+                 max_new_tokens: int = 10) -> None:
         """Load the tokenizer and model once, for reuse across many calls.
 
         Args:

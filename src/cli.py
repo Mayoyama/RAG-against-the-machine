@@ -35,7 +35,7 @@ def index(max_chunk_size: int = 2000, root_directory: str = "data/raw",
 
     Path(save_directory).mkdir(parents=True, exist_ok=True)
 
-    index_corpus(root_directory, max_chunk_size, save_directory)
+    index_corpus(root_directory, max_chunk_size, save_directory, apply_bonuses)
 
     cache_path = Path(save_directory) / "query_cache.json"
     cache_path.unlink(missing_ok=True)

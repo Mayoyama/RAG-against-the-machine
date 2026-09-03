@@ -5,6 +5,7 @@ from .embedding import (save_semantic_index, build_semantic_index,
 from .manifesting import (load_manifest, save_manifest, file_has_changed,
                           build_manifest_entries)
 from src import Chunk, ManifestItem
+from ..utils import expand_snake_case
 from tqdm import tqdm
 import numpy as np
 import bm25s
@@ -65,7 +66,7 @@ def build_bm25_index(chunks: list[Chunk]) -> bm25s.BM25:
         An indexed BM25 retriever, ready to save or query.
     """
 
-    bm25_strings = [chunk.content for chunk in chunks]
+    bm25_strings = [expand_snake_case(chunk.content) for chunk in chunks]
     bm25_tokens = bm25s.tokenize(bm25_strings)
     retriever = bm25s.BM25()
     retriever.index(bm25_tokens)
