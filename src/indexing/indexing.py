@@ -1,8 +1,12 @@
 from pathlib import Path
 from .chunking import chunk_file
-from .embedding import save_semantic_index, build_semantic_index
-from src import Chunk
+from .embedding import (save_semantic_index, build_semantic_index,
+                        load_semantic_index)
+from .manifesting import (load_manifest, save_manifest, file_has_changed,
+                          build_manifest_entries)
+from src import Chunk, ManifestItem
 from tqdm import tqdm
+import numpy as np
 import bm25s
 
 
@@ -46,7 +50,8 @@ def build_chunks(paths: list[str], chunk_size_limit: int) -> list[Chunk]:
 
     for path in tqdm(paths, desc="Indexing files"):
         all_chunks.extend(chunk_file(path, chunk_size_limit))
-
+    print(flush=True)
+    
     return all_chunks
 
 
@@ -82,19 +87,80 @@ def save_index(retriever: bm25s.BM25, chunks: list[Chunk],
     retriever.save(save_dir, corpus=chunk_json)
 
 
-def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str) -> None:
-    """Chunk a directory's files and persist a BM25 index and a
-    semantic (embedding) index for them.
+def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str,
+                 apply_bonuses: bool = False) -> None:
+    """Chunk a directory's files and persist a BM25 index, optionally
+    with semantic (embedding) indexing and incremental reuse.
+
+    By default, only chunks the corpus and builds a BM25 index - no
+    embeddings, no manifest. When apply_bonuses is True, also builds
+    a semantic index, and skips re-chunking/re-embedding files whose
+    modification time matches a previous run, reusing their cached
+    chunks and embedding vectors instead. Changed, new, and deleted
+    files are detected via the manifest saved under save_dir - never
+    touched directly, only through load_manifest/save_manifest.
 
     Args:
         root_dir: Root directory to index.
         chunk_size_limit: Maximum length of each chunk's content.
         save_dir: Directory to save the resulting index under.
+        apply_bonuses: If True, also builds a semantic index and
+            enables incremental reuse of unchanged files' chunks and
+            embeddings across runs.
     """
 
     paths = build_pathlist(root_dir)
-    chunks = build_chunks(paths, chunk_size_limit)
-    matrix = build_semantic_index(chunks)
-    save_semantic_index(matrix, save_dir)
-    retriever = build_bm25_index(chunks)
-    save_index(retriever, chunks, save_dir)
+    
+    if apply_bonuses:
+        manifest = load_manifest(save_dir)
+        old_sem_index = load_semantic_index(save_dir)
+
+        changed_paths: list[str] = []
+        unchanged_chunks: list[Chunk] = []
+        unchanged_vectors: list[np.ndarray] = []
+        mod_times: dict[str, float] = {}
+
+        for path in tqdm(paths):
+            changed, mod_time = file_has_changed(path, manifest)
+            if changed:
+                changed_paths.append(path)
+            else:
+                item = manifest.files[path]
+                if old_sem_index is not None:
+                    unchanged_chunks.extend(item.chunks)
+                    unchanged_vectors.extend(old_sem_index[
+                        item.embedding_row_start: item.embedding_row_end])
+            mod_times[path] = mod_time
+        print(flush=True)
+        
+        new_chunks = build_chunks(changed_paths, chunk_size_limit)
+        new_vectors = build_semantic_index(new_chunks)
+
+        final_chunks = unchanged_chunks + new_chunks
+        matrix = np.vstack(unchanged_vectors + list(new_vectors))
+
+        manifest.files = build_manifest_entries(final_chunks, mod_times)
+        manifest.max_chunk_size = chunk_size_limit
+
+        for path in paths:
+            if path not in manifest.files:
+                manifest.files[path] = ManifestItem(
+                    mod_time=mod_times[path],
+                    chunks=[],
+                    embedding_row_start=len(matrix),
+                    embedding_row_end=len(matrix)
+                )
+
+        save_semantic_index(matrix, save_dir)
+        save_manifest(manifest, save_dir)
+
+    # Non-bonus version:
+    else:
+        final_chunks = build_chunks(paths, chunk_size_limit)
+
+    retriever = build_bm25_index(final_chunks)
+    save_index(retriever, final_chunks, save_dir)
+
+    if apply_bonuses:
+        print(f"Re-indexation: {len(changed_paths)} files changed.\n"
+            f"{len(paths) - len(changed_paths)} files unchanged and reused")

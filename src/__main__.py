@@ -25,5 +25,7 @@ if __name__ == "__main__":
         print(f"File error: {e}")
     except KeyError as e:
         print(f"KeyError error: {e}")
+    except AssertionError as e:
+        print(f"Internal system error: {e}")
     except Exception as e:
         print(f"Unexpected general error: {e}")

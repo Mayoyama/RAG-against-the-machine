@@ -1,24 +1,28 @@
 from .indexing import index_corpus
-from .retrieval import (Bm25Retriever, SemanticRetriever, 
+from .retrieval import (Bm25Retriever, SemanticRetriever,
                         HybridRetriever, RetrievalBase)
 from .models import (MinimalSource, MinimalSearchResults, MinimalAnswer,
                      StudentSearchResults, StudentSearchResultsAndAnswer)
 from .evaluation import evaluate_recallk
 from .utils import (create_json, read_dataset, read_search_results,
                     print_srcs, output_progress_bar)
-from .caching import get_cached, set_cached
+from .caching import load_cached, save_cached
 from pathlib import Path
 from tqdm import tqdm
 
 
 def index(max_chunk_size: int = 2000, root_directory: str = "data/raw",
-          save_directory: str = "data/processed") -> None:
+          save_directory: str = "data/processed",
+          apply_bonuses: bool = False) -> None:
     """Build and persist a BM25 index over the codebase.
 
     Args:
         max_chunk_size: Maximum length of each chunk's content.
         root_directory: Directory to index.
         save_directory: Directory to save the resulting index under.
+        apply_bonuses: If True, also builds a semantic index and
+            enables incremental reuse of unchanged files' chunks and
+            embeddings across runs.
     """
 
     if not isinstance(max_chunk_size, int) or max_chunk_size < 1:
@@ -63,7 +67,7 @@ def search(query: str, k: int, save_directory: str = "data/processed",
     try:
         if method == "bm25":
             cache_path = str(Path(save_directory) / "query_cache.json")
-            cache = get_cached(cache_path, query, k)
+            cache = load_cached(cache_path, query, k)
 
             if cache is not None:
                 print_srcs(cache)
@@ -72,7 +76,7 @@ def search(query: str, k: int, save_directory: str = "data/processed",
             bm25_retriever = Bm25Retriever(save_directory)
             min_srcs = bm25_retriever.search(query, k)
 
-            set_cached(cache_path, query, k, min_srcs)
+            save_cached(cache_path, query, k, min_srcs)
 
         elif method == "semantic":
             semantic_retriever = SemanticRetriever(save_directory)
@@ -136,7 +140,8 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
             question=data.question,
             retrieved_sources=min_srcs
         ))
-
+    print(flush=True)
+    
     student_res = StudentSearchResults(search_results=search_res, k=k)
 
     Path(save_directory).mkdir(parents=True, exist_ok=True)
@@ -180,6 +185,7 @@ def answer(query: str, k: int,
         return generator.generate_answer(query, min_srcs)
 
     answer_str = output_progress_bar(run_generator, "Generating answer")
+    print(flush=True)
 
     res = f"QUERY: {query}\nANSWER: {answer_str}"
 
@@ -220,7 +226,8 @@ def answer_dataset(student_search_results_path: str,
             answer=ans
         )
         res_n_ans.append(min_ans)
-
+    print(flush=True)
+        
     student_res_n_ans = StudentSearchResultsAndAnswer(
             search_results=res_n_ans,
             k=search_res.k

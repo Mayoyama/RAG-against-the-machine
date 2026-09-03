@@ -19,12 +19,18 @@ class SemanticRetriever(RetrievalBase):
         """
 
         pathname = Path(save_dir) / "semantic_index.npy"
-        self.matrix = np.load(pathname)
+        try:
+            self.matrix = np.load(pathname)
+        except (IOError, ValueError) as e:
+            raise FileNotFoundError("Valid semantic embeddings not found or "
+                                    "not created. Run index() with bonus "
+                                    "flag and try again") from e
 
         def sem_idx() -> SentenceTransformer:
             return SentenceTransformer(EMBEDDING_MODEL)
 
         self.model = output_progress_bar(sem_idx, "Building semantic index")
+        print(flush=True)
 
         self.retriever = bm25s.BM25.load(save_dir, load_corpus=True)
 

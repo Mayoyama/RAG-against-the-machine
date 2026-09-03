@@ -23,8 +23,8 @@ def _cache_key(query: str, k: int) -> str:
     return hashed.hexdigest()
 
 
-def get_cached(cache_path: str, query: str,
-               k: int) -> list[MinimalSource] | None:
+def load_cached(cache_path: str, query: str,
+                k: int) -> list[MinimalSource] | None:
     """Look up a previously cached result for (query, k).
 
     Args:
@@ -51,8 +51,8 @@ def get_cached(cache_path: str, query: str,
     return None
 
 
-def set_cached(cache_path: str, query: str, k: int,
-               results: list[MinimalSource]) -> None:
+def save_cached(cache_path: str, query: str, k: int,
+                results: list[MinimalSource]) -> None:
     """Store a search result under (query, k) for future reuse.
 
     Args:

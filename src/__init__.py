@@ -1,7 +1,7 @@
 from .models import (Chunk, MinimalSource, StudentSearchResults,
-                     RagDataset, AnsweredQuestion)
+                     RagDataset, AnsweredQuestion, ManifestItem, Manifest)
 from .indexing import index_corpus, EMBEDDING_MODEL
-from .caching import get_cached, set_cached
+from .caching import load_cached, save_cached
 
 __all__ = [
     "Chunk",
@@ -10,7 +10,9 @@ __all__ = [
     "StudentSearchResults",
     "RagDataset",
     "AnsweredQuestion",
-    "get_cached",
-    "set_cached",
-    "EMBEDDING_MODEL"
+    "load_cached",
+    "save_cached",
+    "EMBEDDING_MODEL",
+    "ManifestItem",
+    "Manifest"
 ]

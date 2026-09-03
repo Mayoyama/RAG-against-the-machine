@@ -1,10 +1,10 @@
-from json import load, dump, JSONDecodeError
+from pydantic import ValidationError
 from pathlib import Path
 from sys import stderr
-from src import Chunk
+from src import Manifest, ManifestItem, Chunk
 
 
-def load_manifest(save_dir: str) -> dict:
+def load_manifest(save_dir: str) -> Manifest:
     """Load the incremental-indexing manifest from disk.
 
     Args:
@@ -12,43 +12,110 @@ def load_manifest(save_dir: str) -> dict:
             directory as the BM25/semantic indexes).
 
     Returns:
-        A dict keyed by file path. Each value holds at least "mtime"
-        (float) and "chunks" (list[Chunk], already reconstructed —
-        not raw dicts). Empty dict if no manifest exists yet (e.g.
-        first run, or after a fresh clean).
+        The saved Manifest, or an empty one (max_chunk_size=None,
+        files={}) if none exists yet - first run, or after a clean.
     """
 
-    # TODO: same try/except (IOError, JSONDecodeError) pattern as
-    # get_cached in caching.py — build the manifest's path the same
-    # way save_semantic_index does (Path(save_dir) / "manifest.json"),
-    # return {} on any read failure.
-    #
-    # Once loaded, each file entry's "chunks" list will be raw dicts
-    # (that's all JSON can hold) — reconstruct them into real Chunk
-    # objects before returning, same idea as get_cached doing
-    # `MinimalSource(**data)` for each cached result.
-    ...
+    try:
+        pathname = Path(save_dir) / "manifest.json"
+        with open(pathname, "r") as f:
+            content = f.read()
+            manifesto = Manifest.model_validate_json(content)
+            return manifesto
+    except (IOError, ValidationError) as e:
+        print(f"load_manifest: Error loading manifest: {e}. Returning "
+              "manifest with default values", file=stderr)
+        return Manifest()
 
 
-def save_manifest(manifest: dict, save_dir: str) -> None:
+def save_manifest(manifest: Manifest, save_dir: str) -> None:
     """Persist the incremental-indexing manifest to disk.
 
     Args:
-        manifest: The full manifest to write — already rebuilt for
+        manifest: The full Manifest to write - already rebuilt for
             this index() run, not merged with whatever was on disk
-            before. Each file entry's "chunks" should be actual
-            Chunk objects at this point, same as what load_manifest
-            returns.
+            before.
         save_dir: Directory to save the manifest under.
     """
 
-    # TODO: same try/except (IOError, TypeError) pattern as
-    # set_cached in caching.py, printing to stderr on failure.
-    #
-    # Chunk objects aren't JSON-serializable directly — convert each
-    # one via .model_dump() before writing, same idea as set_cached
-    # doing `src.model_dump()` for each MinimalSource. Unlike
-    # set_cached, there's no read-and-merge step here: index_corpus
-    # already builds the complete manifest before calling this, so
-    # it's a straight overwrite, not a merge into existing data.
-    ...
+    try:
+        pathname = Path(save_dir) / "manifest.json"
+        with open(pathname, "w") as f:
+            content = manifest.model_dump_json(indent=4)
+            f.write(content)
+    except (IOError, TypeError) as e:
+        print(f"save_manifest: Error writing manifest: {e}.", file=stderr)
+
+
+def file_has_changed(path: str, manifest: Manifest) -> tuple[bool, float]:
+    """Check whether a file's manifest entry is still valid.
+
+    Args:
+        path: File path to check.
+        manifest: The loaded Manifest to check against.
+
+    Returns:
+        A (changed, mod_time) pair. changed is False if path has an
+    entry whose stored mod_time matches the file's current
+    mod_time, True if there's no entry at all or the mod_time no
+    longer matches. mod_time is the current file modification time.
+    """
+
+    mod_time = Path(path).stat().st_mtime
+
+    item = manifest.files.get(path)
+    if item is None:
+        return True, mod_time
+
+    if mod_time != item.mod_time:
+        return True, mod_time
+
+    return False, item.mod_time
+
+
+def build_manifest_entries(chunks: list[Chunk],
+                           mod_times: dict[str, float]
+                           ) -> dict[str, ManifestItem]:
+    """Build fresh ManifestItem entries from a chunk list assembled
+    for this index() run.
+
+    Args:
+        chunks: The full chunk list for this run, grouped by source
+            file - chunks from the same file are never interleaved
+            with another file's chunks elsewhere in the list.
+        mod_times: Each file's current modification time, keyed by
+            path.
+
+    Returns:
+        A dict keyed by file path, one ManifestItem per file, with
+        row ranges matching this list's actual order.
+    """
+
+    new_files: dict[str, ManifestItem] = {}
+    current_path: str | None = None
+    block_start = 0
+
+    for row, chunk in enumerate(chunks):
+        path = chunk.source.file_path
+
+        if path != current_path:
+            if current_path is not None:
+                new_files[current_path] = ManifestItem(
+                    mod_time=mod_times[current_path],
+                    chunks=chunks[block_start:row],
+                    embedding_row_start=block_start,
+                    embedding_row_end=row
+                )
+            block_start = row
+            current_path = path
+
+    if len(chunks) > block_start:
+        assert current_path is not None, "Error creating Manifest item"
+        new_files[current_path] = ManifestItem(
+            mod_time=mod_times[current_path],
+            chunks=chunks[block_start:],
+            embedding_row_start=block_start,
+            embedding_row_end=len(chunks)
+        )
+
+    return new_files
