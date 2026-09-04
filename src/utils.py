@@ -105,7 +105,7 @@ def output_progress_bar(task: Callable[[], T], description: str) -> T:
         except Exception as error:
             errors.append(error)
 
-    thread = threading.Thread(target=run_task)
+    thread = threading.Thread(target=run_task, daemon=True)
     thread.start()
 
     with tqdm(desc=description, bar_format="{desc}: {elapsed}") as progbar:
