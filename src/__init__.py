@@ -1,3 +1,5 @@
+"""Top-level package exports for the RAG pipeline's public API."""
+
 from .models import (Chunk, MinimalSource, StudentSearchResults,
                      RagDataset, AnsweredQuestion, ManifestItem, Manifest)
 from .indexing import index_corpus, EMBEDDING_MODEL

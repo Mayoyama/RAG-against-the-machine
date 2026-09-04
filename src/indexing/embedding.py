@@ -1,3 +1,5 @@
+"""Building, saving, and loading the semantic (embedding) index."""
+
 from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -22,9 +24,13 @@ def build_semantic_index(chunks: list[Chunk]) -> np.ndarray:
     """
 
     def load_model() -> SentenceTransformer:
+        """Load the embedding model."""
+
         return SentenceTransformer(EMBEDDING_MODEL)
 
     def run_encoding() -> np.ndarray:
+        """Encode every chunk's content with the loaded model."""
+
         return model.encode([chunk.content for chunk in chunks])
 
     model = output_progress_bar(load_model, "Loading embedding model")

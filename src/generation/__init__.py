@@ -1,3 +1,5 @@
+"""Public generation API."""
+
 from .generating import Generator
 
 __all__ = [

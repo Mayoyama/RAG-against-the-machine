@@ -95,16 +95,32 @@ Recall@k is computed via IoU (intersection-over-union of character spans, same-f
 
 ## Example Usage
 
+Runnable end-to-end, in order, against the real datasets shipped in `data/datasets/` (code and docs each scored separately, per the mandatory 50%/80% thresholds):
+
 ```
+# 1. Build the index (mandatory BM25; add --apply_bonuses True for semantic + incremental reuse)
 uv run python -m src index --root_directory data/raw --save_directory data/processed
 uv run python -m src index --root_directory data/raw --save_directory data/processed --apply_bonuses True
-uv run python -m src search --query "..." --k 5
-uv run python -m src search --query "..." --k 5 --method semantic
-uv run python -m src search --query "..." --k 5 --method hybrid
-uv run python -m src search_dataset --dataset_path data/datasets/questions.json --k 5 --save_directory data/processed
-uv run python -m src answer --query "..." --k 5
-uv run python -m src answer_dataset --student_search_results_path data/processed/questions.json --save_directory data/output
-uv run python -m src evaluate --student_search_results_path data/output/questions.json --dataset_path data/datasets/questions.json
+
+# 2. Search: single query (method defaults to "bm25"; "semantic"/"hybrid" need --apply_bonuses True at index time)
+uv run python -m src search --query "What activation formats does the fused batched MoE layer return in vLLM?" --k 5
+uv run python -m src search --query "What activation formats does the fused batched MoE layer return in vLLM?" --k 5 --method semantic
+uv run python -m src search --query "What activation formats does the fused batched MoE layer return in vLLM?" --k 5 --method hybrid
+
+# 3. Search: full dataset, one run per scope
+uv run python -m src search_dataset --dataset_path data/datasets/UnansweredQuestions/dataset_code_public.json --k 5 --save_directory data/output/search_results
+uv run python -m src search_dataset --dataset_path data/datasets/UnansweredQuestions/dataset_docs_public.json --k 5 --save_directory data/output/search_results
+
+# 4. Answer: single query
+uv run python -m src answer --query "What activation formats does the fused batched MoE layer return in vLLM?" --k 5
+
+# 5. Answer: full dataset, using step 3's output as input, one run per scope
+uv run python -m src answer_dataset --student_search_results_path data/output/search_results/dataset_code_public.json --save_directory data/output/search_results_and_answer
+uv run python -m src answer_dataset --student_search_results_path data/output/search_results/dataset_docs_public.json --save_directory data/output/search_results_and_answer
+
+# 6. Evaluate: recall@k against ground truth, one run per scope
+uv run python -m src evaluate --student_search_results_path data/output/search_results/dataset_code_public.json --dataset_path data/datasets/AnsweredQuestions/dataset_code_public.json
+uv run python -m src evaluate --student_search_results_path data/output/search_results/dataset_docs_public.json --dataset_path data/datasets/AnsweredQuestions/dataset_docs_public.json
 ```
 
 [↑ Back to top](#top)

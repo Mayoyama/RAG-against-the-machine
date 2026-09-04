@@ -1,3 +1,5 @@
+"""Local-LLM answer generation grounded in retrieved sources."""
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src import MinimalSource
 from src.indexing.chunking import get_utf8_content, get_chunk

@@ -1,3 +1,5 @@
+"""Command-line commands: index, search, answer, and evaluate."""
+
 from .indexing import index_corpus
 from .retrieval import (Bm25Retriever, SemanticRetriever,
                         HybridRetriever, RetrievalBase)
@@ -141,7 +143,7 @@ def search_dataset(dataset_path: str, k: int, save_directory: str,
             retrieved_sources=min_srcs
         ))
     print(flush=True)
-    
+
     student_res = StudentSearchResults(search_results=search_res, k=k)
 
     Path(save_directory).mkdir(parents=True, exist_ok=True)
@@ -182,6 +184,8 @@ def answer(query: str, k: int,
     generator = Generator()
 
     def run_generator() -> str:
+        """Call the generator with the closed-over query and sources."""
+
         return generator.generate_answer(query, min_srcs)
 
     answer_str = output_progress_bar(run_generator, "Generating answer")
@@ -227,7 +231,7 @@ def answer_dataset(student_search_results_path: str,
         )
         res_n_ans.append(min_ans)
     print(flush=True)
-        
+
     student_res_n_ans = StudentSearchResultsAndAnswer(
             search_results=res_n_ans,
             k=search_res.k

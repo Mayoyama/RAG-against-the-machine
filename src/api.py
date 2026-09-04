@@ -1,3 +1,5 @@
+"""FastAPI wrapper exposing search and answer over HTTP."""
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from .cli import search, answer
@@ -9,6 +11,8 @@ app = FastAPI()
 
 @app.exception_handler(ValueError)
 def val_error_handler(request: Request, exception: ValueError) -> JSONResponse:
+    """Return a 400 response for invalid input."""
+
     return JSONResponse(status_code=400, content={
         "error": str(exception)
     })
@@ -16,6 +20,8 @@ def val_error_handler(request: Request, exception: ValueError) -> JSONResponse:
 
 @app.exception_handler(KeyError)
 def key_error_handler(request: Request, exception: KeyError) -> JSONResponse:
+    """Return a 500 response for an unexpected missing key."""
+
     return JSONResponse(status_code=500, content={
         "error": f"KeyError: {exception}"
     })
@@ -23,6 +29,8 @@ def key_error_handler(request: Request, exception: KeyError) -> JSONResponse:
 
 @app.exception_handler(IOError)
 def io_error_handler(request: Request, exception: IOError) -> JSONResponse:
+    """Return a 500 response for a file I/O failure."""
+
     return JSONResponse(status_code=500, content={
         "error": f"IOError: {exception}"
     })
@@ -30,6 +38,8 @@ def io_error_handler(request: Request, exception: IOError) -> JSONResponse:
 
 @app.exception_handler(Exception)
 def exception_handler(request: Request, exception: Exception) -> JSONResponse:
+    """Return a 500 response for any other uncaught exception."""
+
     return JSONResponse(status_code=500, content={
         "error": f"Unexpected error: {exception}"
     })
@@ -43,7 +53,6 @@ def search_endpoint(query: str, k: int = 5, method: str = "bm25"
     Args:
         query: The search query.
         k: Number of results (default 5).
-        directory: The directory to save results in.
         method: "bm25", "semantic", or "hybrid" (default "bm25").
     """
 
@@ -56,7 +65,7 @@ def answer_endpoint(query: str, k: int) -> dict[str, str]:
 
     Args:
         query: The question to answer.
-        k: Number of sources to retrieve (default 5).
+        k: Number of sources to retrieve.
     """
 
     ans = answer(query, k)

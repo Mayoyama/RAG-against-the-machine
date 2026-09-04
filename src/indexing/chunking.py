@@ -1,3 +1,5 @@
+"""Splitting source files into Chunks for indexing."""
+
 from sys import stderr
 from src import Chunk, MinimalSource
 import ast

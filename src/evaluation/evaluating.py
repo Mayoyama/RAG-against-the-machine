@@ -1,3 +1,5 @@
+"""Recall@k scoring against a ground-truth dataset."""
+
 from src import (MinimalSource,
                  StudentSearchResults,
                  RagDataset,

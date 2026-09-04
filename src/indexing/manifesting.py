@@ -1,3 +1,5 @@
+"""Loading, saving, and diffing the incremental-indexing manifest."""
+
 from pydantic import ValidationError
 from pathlib import Path
 from sys import stderr

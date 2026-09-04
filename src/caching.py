@@ -1,3 +1,5 @@
+"""Query-result caching for the BM25 retrieval path."""
+
 from json import load, dump, JSONDecodeError
 from hashlib import sha256
 from src import MinimalSource

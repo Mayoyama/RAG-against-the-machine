@@ -1,3 +1,5 @@
+"""CLI entry point wiring cli.py's functions up to python-fire."""
+
 from .cli import (index, search, search_dataset,
                   answer, answer_dataset, evaluate)
 import fire

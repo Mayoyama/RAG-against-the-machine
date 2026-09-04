@@ -1,3 +1,5 @@
+"""Semantic (embedding) retrieval over the saved index."""
+
 from .retrieval_base import RetrievalBase
 from sentence_transformers import SentenceTransformer
 from src import MinimalSource, EMBEDDING_MODEL
@@ -27,6 +29,8 @@ class SemanticRetriever(RetrievalBase):
                                     "flag and try again") from e
 
         def sem_idx() -> SentenceTransformer:
+            """Load the embedding model."""
+
             return SentenceTransformer(EMBEDDING_MODEL)
 
         self.model = output_progress_bar(sem_idx, "Building semantic index")

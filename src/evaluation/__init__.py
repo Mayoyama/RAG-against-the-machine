@@ -1,3 +1,5 @@
+"""Public evaluation API."""
+
 from .evaluating import evaluate_recallk
 
 __all__ = [

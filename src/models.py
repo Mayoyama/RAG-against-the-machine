@@ -1,3 +1,5 @@
+"""Pydantic data models shared across the RAG pipeline."""
+
 from pydantic import BaseModel, Field, model_validator
 import uuid
 
@@ -11,6 +13,8 @@ class MinimalSource(BaseModel):
 
     @model_validator(mode="after")
     def check_valid_end(self) -> "MinimalSource":
+        """Reject a span whose start comes after its end."""
+
         if self.first_character_index > self.last_character_index:
             raise ValueError("MinimalSource model validation error: Invalid "
                              "value [first > last]")
@@ -84,6 +88,8 @@ class ManifestItem(BaseModel):
 
     @model_validator(mode="after")
     def check_valid_end(self) -> "ManifestItem":
+        """Reject a row range whose start comes after its end."""
+
         if self.embedding_row_start > self.embedding_row_end:
             raise ValueError("Manifest model validation error: Invalid "
                              "value [start > end]")
@@ -92,6 +98,7 @@ class ManifestItem(BaseModel):
 
 
 class Manifest(BaseModel):
+    """Whole-corpus cached state for incremental indexing."""
 
     max_chunk_size: int | None = Field(gt=0, default=None)
     files: dict[str, ManifestItem] = {}

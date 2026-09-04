@@ -1,3 +1,5 @@
+"""Small shared helpers: JSON I/O, printing, and a progress-bar wrapper."""
+
 from json import dump
 from sys import stderr, exit
 from typing import Any
@@ -96,6 +98,8 @@ def output_progress_bar(task: Callable[[], T], description: str) -> T:
     errors: list[Exception] = []
 
     def run_task() -> None:
+        """Run task() and stash its result or exception for the caller."""
+
         try:
             returns.append(task())
         except Exception as error:

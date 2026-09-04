@@ -1,3 +1,5 @@
+"""Hybrid retrieval: fuses BM25 and semantic rankings via RRF."""
+
 from .retrieval_base import RetrievalBase
 from .bm25_retrieving import Bm25Retriever
 from .semantic_retrieving import SemanticRetriever
@@ -5,6 +7,8 @@ from src import MinimalSource
 
 
 class HybridRetriever(RetrievalBase):
+    """Retrieves chunks by fusing BM25 and semantic rankings with RRF."""
+
     def __init__(self, save_dir: str) -> None:
         """Load the BM25 and semantic retrievers to fuse results from.
 
@@ -24,6 +28,8 @@ class HybridRetriever(RetrievalBase):
 
         Args:
             results: A single retriever's ranked results.
+            weight: Multiplier applied to this retriever's RRF
+                contribution before fusion.
 
         Returns:
             A dict keyed by (file_path, first_character_index), each

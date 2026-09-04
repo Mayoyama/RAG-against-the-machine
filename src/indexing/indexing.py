@@ -1,3 +1,6 @@
+"""Corpus-level indexing: chunking, BM25/semantic index builds, and
+the optional incremental-reindex path."""
+
 from pathlib import Path
 from .chunking import chunk_file
 from .embedding import (save_semantic_index, build_semantic_index,
@@ -52,7 +55,7 @@ def build_chunks(paths: list[str], chunk_size_limit: int) -> list[Chunk]:
     for path in tqdm(paths, desc="Indexing files"):
         all_chunks.extend(chunk_file(path, chunk_size_limit))
     print(flush=True)
-    
+
     return all_chunks
 
 
@@ -111,7 +114,7 @@ def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str,
     """
 
     paths = build_pathlist(root_dir)
-    
+
     if apply_bonuses:
         manifest = load_manifest(save_dir)
         old_sem_index = load_semantic_index(save_dir)
@@ -133,7 +136,7 @@ def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str,
                         item.embedding_row_start: item.embedding_row_end])
             mod_times[path] = mod_time
         print(flush=True)
-        
+
         new_chunks = build_chunks(changed_paths, chunk_size_limit)
         new_vectors = build_semantic_index(new_chunks)
 
@@ -164,4 +167,4 @@ def index_corpus(root_dir: str, chunk_size_limit: int, save_dir: str,
 
     if apply_bonuses:
         print(f"Re-indexation: {len(changed_paths)} files changed.\n"
-            f"{len(paths) - len(changed_paths)} files unchanged and reused")
+              f"{len(paths) - len(changed_paths)} files unchanged and reused")
