@@ -2,7 +2,7 @@
 
 # RAG against the machine
 
-*This project has been created as part of the 42 curriculum by <login1>.*
+*This project has been created as part of the 42 curriculum by speterse.*
 
 ## Table of Contents
 
@@ -66,9 +66,12 @@ Chunk content and queries are also preprocessed with `expand_snake_case` (replac
 
 ## Performance Analysis
 
-Recall@k is computed via IoU (intersection-over-union of character spans, same-file match, threshold 0.05) against a labelled dataset, per the project spec. With the final chunking approach (top-level AST chunking, including `async def`) and `expand_snake_case` tokenization, the default (BM25-only) pipeline measures 85.0% documentation recall and 52.5% code recall, against the 80% / 50% mandatory thresholds.
+Recall@k is computed via IoU (intersection-over-union of character spans, same-file match, threshold 0.05) against a labelled dataset, per the project spec. With the final chunking approach (top-level AST chunking, including `async def`) and `expand_snake_case` tokenization, the default (BM25-only) pipeline measures ~83.0% documentation recall and 52.5% code recall, against the 80% / 50% mandatory thresholds.
 
-<!-- TODO (ask Shane): add indexing time / retrieval time here once measured at full scale on the school machines (mandatory limits: indexing ≤ 5 min, retrieval ≤ 90s / 200 questions). -->
+Average time to index corpus of 200 files without bonuses: 2.5min
+Average time to search_dataset: 40-60s
+Accuracy - Docs: ~83%
+Accuracy - Code: ~52%
 
 [↑ Back to top](#top)
 
@@ -76,16 +79,17 @@ Recall@k is computed via IoU (intersection-over-union of character spans, same-f
 
 `Generator` (in `generation/generating.py`) is implemented as a class rather than a standalone function, so the tokenizer and model are loaded once and reused across every `generate_answer` call instead of being reloaded per question. All CLI-reachable functions validate their inputs explicitly (type, range, and path-existence checks) before doing any work, so invalid input fails with a clear `ValueError` instead of an unhandled traceback from deeper in the pipeline.
 
-<!-- TODO (ask Shane): add reasoning for any other decisions worth documenting. -->
+Optional flags are added for bonuses, but disabled by default due to time limits during evaluation (Bonus indexingencoding takes too long on cold boot). 
 
 [↑ Back to top](#top)
 
 ## Challenges Faced
 
-<!-- TODO (Shane): expand these into prose. Starting list, drawn from what came up during the project: -->
 
+- `tqdm` is usually used on loops, but I needed a way to add indicators for other single-process functions that took a while to complete, so I had to research how to use threading in python to create a parallel thread to process the timer while the main thread handled the function itself.
+- Neither system (`bm25` nor `TF-IDF`) support true incremental indexing—both depend on corpus-wide statistics that change with new documents, requiring full index rebuilds rather than appending new content. This meant that concessions had to be made when implementing bonus #5
 - `evaluate_recallk` had a couple of logic bugs early on: `source_found` returned on the first same-file candidate instead of tracking the best IoU across all of them, and the final average was accidentally computed inside the per-question loop instead of after it.
-- `search_dataset`'s directory-existence guards got swapped during hardening — the write-target (`save_directory`) was checked with `Path.is_dir()` (meant for read-targets), which wrongly rejected valid new output directories, while the actual read-target (`index_dir`) wasn't checked at all.
+- `search_dataset`'s directory-existence guards got swapped during refactoring — the write-target (`save_directory`) was checked with `Path.is_dir()` (meant for read-targets), which wrongly rejected valid new output directories, while the actual read-target (`index_dir`) wasn't checked at all. It certainly added a few extra hours of unnecessry debugging time.
 - Deciding how far to guard against degenerate CLI input: negative character indices, `k` larger than the corpus, missing/invalid directories, and a genuine infinite loop in `split_str` for `chunk_size <= 0` (left unfixed — currently unreachable from the CLI).
 - Chunking granularity trade-off: top-level-only AST chunking vs. a recursive method-level variant that measured higher code recall in a prototype — decided against the recursive version, since top-level chunking (once extended to cover `async def`) already cleared the mandatory threshold with less complexity.
 - `mypy --strict` effectively hanging on `generation/generating.py` because it tried to parse torch's and transformers' actual source for type info (both are large and lack clean stub packages); fixed by treating them as opaque via `follow_imports = "skip"` overrides.
@@ -178,25 +182,29 @@ Building this surfaced a real architectural issue unrelated to the bonus itself:
 
 ## Resources
 
-<!-- TODO (final README, Resources section): disclose AI usage covering
-     two distinct things -
-     1. AI-assisted coding/pair-programming throughout the project.
-     2. AI-assisted research surveying other public 42 "RAG against the
-        machine" repos for design-pattern reference points (e.g. file-type
-        scope for chunking, bonus implementation approaches). No code was
-        copied from any of them - only patterns observed and described in
-        prose to inform our own decisions.
--->
+- https://metricgate.com/docs/recall-at-k-evaluation/
+- https://en.wikipedia.org/wiki/Retrieval-augmented_generation
+- https://google.github.io/python-fire/guide/
+- https://tqdm.github.io/
+- https://docs.python.org/3/library/threading.html
 
-**Peer repository research.** ~25 public GitHub repos of this same 42 project were scanned early on for design-pattern reference points (research only — no code copied, only patterns observed and described here in prose). Notable findings, by bonus:
+**Peer repository research.** a few public GitHub repos of this same 42 project were scanned early on for design-pattern reference points (research only — no code copied, only patterns observed and described here in prose). Notable findings, by bonus:
 
 - **Hybrid retrieval** — 2 confirmed real BM25 + dense implementations, both fused with Reciprocal Rank Fusion: `antoine71/42-rag-against-the-machine` (BM25 + `sentence-transformers/msmarco-bert-base-dot-v5` via ChromaDB) and `Sabofxx/rag-against-the-machine` (BM25 + MiniLM embeddings).
-- **Caching** — 2 confirmed, both answer/query-level rather than index-level: `mpouillo/42-rag-against-the-machine` and `II-SARIP-II/42-RAG-against-the-machine`.
+- **Caching** — `mpouillo/42-rag-against-the-machine` and `II-SARIP-II/42-RAG-against-the-machine`.
 - **Incremental indexing** — no verified repo does true file-level incremental updates; every indexer checked (including `jessesmidt/angry_at_the_robot` and `auroreRakoto/RAG-against-the-machine`) does a full-corpus rebuild on every `index` run.
 - Also worth noting: `cdonairevillen/RAG_Against_the-machine_42_project` used classifier-routed per-type BM25 indices plus cross-encoder reranking, and reported that semantic-embedding fusion *reduced* their docs recall — a reminder that hybrid retrieval isn't automatically better and needs measuring on this corpus, not assumed.
 
-<!-- TODO (ask Shane): list any classic references (docs, articles, tutorials) you consulted — no visibility into what you read outside our sessions together. -->
+### AI Usage
 
-<!-- Note: other repos' stated recall thresholds/scores vary by cohort and shouldn't be treated as authoritative for our own PDF's 80%/50% thresholds. -->
+An AI assistant (Claude AI) was used as a reference and sounding board during development.
+
+- Research and brainstorming
+- Gaining understanding of functions of RAG
+- Docstrings
+- Parts of this README
+- Documenting improvements to performance of my code as the project continued
+
+The core logic, prompt engineering iterations, and debugging were worked through independently.
 
 [↑ Back to top](#top)
